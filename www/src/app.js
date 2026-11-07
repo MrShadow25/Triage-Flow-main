@@ -10,8 +10,9 @@
   const app = $('#app'), modalRoot = $('#modal');
 
   /* =====================  RENDER  ===================== */
+  let syncing = false;
   function render() {
-    TF.store.save();
+    if (!syncing) TF.store.save();
     if (!S.user) {
       app.className = 'login';
       app.innerHTML = ui.auth.screen();
@@ -24,7 +25,7 @@
     const title = S.notif ? 'Notifications' : S.sub === 'detail' ? 'Patient Detail' : S.sub === 'priority' ? 'Set Priority' : TITLES[S.tab];
     const body = S.notif ? ui.notifications(r) : ui[r.toLowerCase()](S.tab, S.sub);
     app.className = r[0];
-    app.innerHTML = appHeader({ title, back }) + `<main>${body}</main>` + ui.nav(r, S.tab, S.notif);
+    app.innerHTML = appHeader({ title, back, dot: TF.hasHot(r) }) + `<main>${body}</main>` + ui.nav(r, S.tab, S.notif);
   }
 
   function renderModal() {
@@ -78,11 +79,14 @@
     S.tf = null; S.err = '';
     if (tf.purpose === 'login') {
       const acc = S.accounts.find((a) => a.id === tf.ctx.id);
-      S.user = acc; S.role = acc.role; S.tab = TABS[acc.role][0][0]; S.sub = ''; S.notif = false; S.lf.pw = '';
+      S.user = acc; S.role = acc.role; S.sel = null; S.tab = TABS[acc.role][0][0]; S.sub = ''; S.notif = false; S.lf.pw = '';
       toast('Signed in as ' + acc.name);
     } else if (tf.purpose === 'verify') {
       const a = S.ca;
       S.accounts.push({ id: a.id.trim().toUpperCase(), name: a.name.trim(), role: a.role, pw: a.pw, phone: a.phone });
+      const nm = a.name.trim();
+      if (a.role !== 'Receptionist' && !S.staff.some((x) => x.name === nm)) S.staff.push({ name: nm, role: a.role, spec: a.role === 'Doctor' ? 'Physician' : 'Staff Nurse', st: 'available' });
+      TF.engine.autoAssign();
       S.lf = { id: a.id.trim().toUpperCase(), pw: '' }; S.role = a.role; S.ca = TF.blank.account(); S.scr = 'login';
       toast('Number verified. Account created. Sign in to continue.');
     } else if (tf.purpose === 'reset') {
@@ -159,65 +163,70 @@
       S.err = ''; S.sub = 'priority'; render();
     },
     chk(d) { const i = +d.i; S.chk = S.chk.includes(i) ? S.chk.filter((x) => x !== i) : [...S.chk, i]; render(); },
+    'add-sym'() {
+      const v = S.newSym.trim().slice(0, 60);
+      if (!v) return;
+      if (S.syms.some((x) => x.toLowerCase() === v.toLowerCase())) return toast('Symptom already exists.');
+      S.syms.push(v); S.chk.push(S.syms.length - 1); S.newSym = ''; render();
+    },
+    'rm-sym'(d) { const i = +d.i; S.syms.splice(i, 1); S.chk = S.chk.filter((x) => x !== i).map((x) => (x > i ? x - 1 : x)); render(); },
     pri(d) { S.pri = +d.v; render(); },
 
     'confirm-queue'() {
-      const f = S.f, doc = TF.staff.docs().find((x) => x[2]), nurse = TF.staff.nurses().find((x) => x[2]);
-      const used = TF.patients.active().map((p) => p.room);
-      const p = {
-        id: S.nid++, n: f.n.trim(), p: S.pri, c: f.c.trim(), dx: f.dx.trim() || 'Pending',
-        room: [1, 2, 3, 4, 5, 6].find((r) => !used.includes(r)) || null,
-        doc: doc ? doc[0] : 'Unassigned', nu: nurse ? nurse[0].replace('Nurse ', '') : 'Unassigned', w: 0, st: 'waiting',
-      };
-      S.P.push(p); S.added++;
-      TF.notify('Receptionist', 'Patient priority set', 'NOW', `Patient ${p.n} queued as P${p.p}`);
-      TF.notify('Doctor', 'New patient assigned', 'NOW', `Patient ${p.n} · ${p.c}`);
-      S.f = TF.blank.reg(); S.chk = [0, 1, 2, 3, 4]; S.pri = 1; S.sub = ''; S.tab = 'queue';
-      render(); toast(p.n + ' added to the queue');
+      const p = TF.engine.register(S.f, S.pri, S.syms.filter((x, i) => S.chk.includes(i)));
+      S.f = TF.blank.reg(); S.syms = [...TF.data.SYM]; S.chk = [0, 1, 2, 3, 4]; S.pri = 1; S.sub = ''; S.tab = 'queue';
+      render(); toast(`${p.n} added${p.doc ? ' · assigned to ' + p.doc : ' · waiting for a doctor'}`);
     },
-
-    'reassign-patient'(d) { S.sel = +d.id; A.tab({ v: 'reassign' }); },
+    'delete-patient'(d) {
+      const p = TF.patients.byId(d.id);
+      if (!p || !confirm(`Permanently delete ${p.n}'s queue registration?`)) return;
+      TF.engine.remove(p); render(); toast('Patient registration deleted.');
+    },
+    'reassign-patient'(d) { const p = TF.patients.byId(d.id); S.sel = +d.id; S.rd = p.doc; S.rn = p.nu; A.tab({ v: 'reassign' }); },
     room(d) { S.room = +d.v; render(); },
-    'room-assign'(d) {
-      const move = d.v === '1';
-      if (!S.room) return toast('Select a room first');
-      if (TF.patients.active().some((p) => p.room == S.room)) return toast('That room is occupied');
-      const p = move ? TF.patients.byId(S.sel) : TF.patients.active().find((x) => !x.room);
-      if (!p) return toast(move ? 'Choose a patient in Queue first' : 'No patient is waiting for a room');
-      p.room = S.room;
-      TF.notify('Receptionist', 'Patient queue update', 'NOW', `Patient ${p.n} moved to Room ${S.room}`);
-      S.room = null; render(); toast(p.n + ' placed in the room');
+    'room-assign'() {
+      const p = TF.patients.byId(S.rp);
+      if (!p) return toast('Select a patient first');
+      if (!S.room) return toast('Select an available room first');
+      if (TF.patients.active().some((x) => x.room == S.room)) return toast('That room is occupied');
+      TF.engine.setRoom(p, S.room); S.room = null; render(); toast(p.n + ' placed in the room');
+    },
+    'room-clear'() {
+      const p = TF.patients.byId(S.rp);
+      if (!p) return toast('Select a patient first');
+      TF.engine.setRoom(p, null); render(); toast(p.n + ' removed from room');
     },
     pick(d) { S[d.k] = d.v; render(); },
     'confirm-reassign'() {
       const p = TF.patients.byId(S.sel); if (!p) return;
-      if (S.rd) p.doc = S.rd;
-      if (S.rn) p.nu = S.rn.replace('Nurse ', '');
-      S.rd = S.rn = null;
-      TF.notify('Receptionist', 'Staff reassigned', 'NOW', `Patient ${p.n} · ${p.doc} · ${p.nu}`);
+      if (!S.rd || !S.rn) return toast('Choose both a doctor and a nurse.');
+      TF.engine.reassign(p, S.rd, S.rn); S.rd = S.rn = null;
       A.tab({ v: 'queue' }); toast('Reassignment confirmed');
     },
     export() {
-      const t = `Shift summary\nPatients: ${48 + S.added}\nAvg wait: 23m\nAdmitted: ${9 + S.adm}\nDischarge: ${31 + S.dis}\nShift: 6:00 AM - 2:00 PM`;
+      const s = TF.engine.summary();
+      const rows = [['Shift', s.shift], ['Patients', s.total], ['Average wait (minutes)', s.avg], ['Admitted', s.admitted], ['Discharged', s.out]];
+      const csv = rows.map((r) => r.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
       const a = document.createElement('a');
-      a.href = 'data:text/plain,' + encodeURIComponent(t); a.download = 'shift-summary.txt'; a.click();
+      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv); a.download = 'shift-summary-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click();
       toast('Summary exported');
     },
     'reset-demo'() { TF.store.reset(); location.reload(); },
 
-    /* --- nurse --- */
-    'toggle-busy'() { S.nbusy = !S.nbusy; render(); },
+    /* --- nurse + doctor shared --- */
+    'my-status'(d) { const me = TF.staff.me(); if (!me) return toast('No staff profile for this account'); TF.engine.setStaffStatus(me, d.v); render(); toast('Status updated'); },
+    'task-done'(d) { TF.engine.completeTask(+d.id); render(); toast('Task marked done — next re-check scheduled'); },
 
     /* --- doctor --- */
-    'open-patient'(d) { S.sel = +d.id; S.sub = 'detail'; S.notif = false; render(); },
+    'open-patient'(d) { S.sel = +d.id; S.dxv = TF.patients.byId(S.sel).dx; S.sub = 'detail'; S.notif = false; render(); },
+    'save-dx'() { const p = TF.patients.byId(S.sel); if (!p) return; TF.engine.saveDx(p, S.dxv); render(); toast('Diagnosis saved'); },
     'patient-status'(d) {
       const p = TF.patients.byId(S.sel); if (!p) return;
-      if (d.v === 'out') { p.st = 'out'; S.dis++; S.sub = ''; toast(p.n + ' discharged'); }
-      else if (d.v === 'admitted') { p.st = 'admitted'; S.adm++; toast(p.n + ' admitted'); }
-      else { p.st = 'seen'; toast('Marked as seen'); }
+      TF.engine.status(p, d.v);
+      if (d.v === 'out') { S.sub = ''; toast(p.n + ' discharged — room and staff freed'); }
+      else toast(d.v === 'admitted' ? p.n + ' admitted' : 'Marked as seen');
       render();
     },
-    'doc-status'(d) { S.dstat = d.v; render(); },
   };
 
   /* =====================  EVENTS  ===================== */
@@ -284,15 +293,22 @@
 
   /* =====================  TIMERS  ===================== */
   setInterval(() => {
-    // patient wait clocks
-    S.P.forEach((p) => { if (p.st !== 'out') p.w++; });
-    document.querySelectorAll('[data-t]').forEach((el) => { const p = TF.patients.byId(el.dataset.t); if (p) el.textContent = fmt(p.w); });
-    // 2FA resend countdown (only touches the DOM when the text changes, so focus is never lost)
-    if (S.tf) {
+    document.querySelectorAll('[data-t]').forEach((el) => { const p = TF.patients.byId(el.dataset.t); if (p) el.textContent = fmt(TF.patients.wait(p)); });
+    document.querySelectorAll('[data-due]').forEach((el) => { const t = S.tasks.find((x) => x.id == el.dataset.due); if (t) el.textContent = TF.utils.duePhrase(t.due); });
+    if (S.tf) { // 2FA resend countdown
       const el = $('#resend'), html = ui.auth.resendHtml(S.tf);
       if (el && el.innerHTML !== html) el.innerHTML = html;
     }
   }, 1000);
+
+  // Live sync: another tab/window of the app (e.g. a doctor signed in next to the receptionist) changed the data.
+  window.addEventListener('storage', (e) => {
+    if (e.key !== C.STORE_KEY) return;
+    TF.store.load();
+    const a = document.activeElement;
+    if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return; // don't interrupt typing; data is already updated
+    syncing = true; render(); syncing = false;
+  });
 
   window.addEventListener('beforeunload', () => TF.store.save());
 

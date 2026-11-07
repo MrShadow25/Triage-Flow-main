@@ -8,12 +8,12 @@
   const authHeader = (title) => `<header class="center"><h1>${esc(title)}</h1></header>`;
 
   // Role-coloured bar: Log out (home) or Back, title, notification bell.
-  const appHeader = ({ title, back }) => `<header>
+  const appHeader = ({ title, back, dot }) => `<header>
     ${back
       ? '<button class="ib" data-action="back" aria-label="Back">←</button>'
       : '<button class="ib" data-action="logout">Log out</button>'}
     <h1>${esc(title)}</h1>
-    <button class="ib bell" data-action="bell" aria-label="Notifications">🔔<i></i></button>
+    <button class="ib bell" data-action="bell" aria-label="Notifications">🔔${dot ? '<i></i>' : ''}</button>
   </header>`;
 
   TF.components.header = { authHeader, appHeader };

@@ -24,3 +24,10 @@ Edit files inside `www/`, then run `npx cap sync android` before running the app
 - The current OTP code is generated locally in JavaScript and is not sent by SMS.
 - This package is a starting Android wrapper, not a signed release APK.
 - For real users and patient information, add secure server-side authentication, access control, and a proper database before deployment.
+
+## Interactive logic (no PHP / SQL)
+The hospital prototype's server logic now lives in `www/src/engine.js` and runs in the browser:
+auto-assign (fewest patients, P1-P3 get rooms), staff status + load, timed re-check tasks (P1 15m ... P5 4h),
+diagnosis / seen / admit / discharge, room assign/remove, delete patient, computed shift summary (CSV).
+Data is saved in localStorage and syncs live between tabs/windows of the same browser.
+For several real devices sharing one queue you need a hosted backend (e.g. Firebase or Supabase), not PHP.
