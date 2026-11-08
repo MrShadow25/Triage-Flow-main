@@ -31,3 +31,9 @@ auto-assign (fewest patients, P1-P3 get rooms), staff status + load, timed re-ch
 diagnosis / seen / admit / discharge, room assign/remove, delete patient, computed shift summary (CSV).
 Data is saved in localStorage and syncs live between tabs/windows of the same browser.
 For several real devices sharing one queue you need a hosted backend (e.g. Firebase or Supabase), not PHP.
+
+## Staff IDs and accounts (same as the hospital prototype)
+IDs: REC-#### receptionist, RN-#### nurse, DR-#### doctor. Demo logins (password demo1234): REC-1001, RN-3001, DR-2001.
+Hospital code for sign-up: 12345678. Staff directory, patients and tasks use the prototype's SQL seed data.
+To bring over accounts made in the old PHP version: fill www/src/accounts-import.js (instructions inside).
+Imported people set a new password once through "Forgot password?" (the old PHP hashes cannot be read here).

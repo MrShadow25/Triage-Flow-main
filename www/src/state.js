@@ -8,7 +8,8 @@
     DEMO_MODE: true, MAX_ATTEMPTS: 3, RESEND_SECONDS: 30, CODE_TTL_MS: 5 * 60 * 1000, MIN_PASSWORD: 8,
     STORE_KEY: 'triageflow-v3',
     RECHECK_MIN: { 1: 15, 2: 30, 3: 60, 4: 120, 5: 240 }, // nurse re-check interval per priority
-    MAX_LOAD: 5,                                          // max active patients per doctor / nurse
+    MAX_LOAD: { Doctor: 3, Nurse: 2 },                    // max active patients per doctor / nurse (from hospital config.php)
+    HOSPITAL_CODE: '12345678',                            // required to create an account (change it!)
   };
 
   TF.data = {
@@ -36,43 +37,66 @@
     sel: null, room: null, rp: '', dxv: '', newSym: '', rd: null, rn: null,
     f: blankReg(), syms: [...TF.data.SYM], chk: [0, 1, 2, 3, 4], pri: 1,
     // shared data (persisted + synced between tabs)
-    nid: 5, tid: 1,
+    nid: 5, tid: 5,
+    // Demo logins (password demo1234). Other staff claim their profile via Create account (hospital code 12345678).
     accounts: [
-      { id: 'RC-1042', name: 'Ana Reyes', role: 'Receptionist', pw: 'demo1234', phone: '+639171234567' },
-      { id: 'RC-1043', name: 'Maria P.', role: 'Nurse', pw: 'demo1234', phone: '+639181234568' },
-      { id: 'RC-1044', name: 'Dr. Alexander', role: 'Doctor', pw: 'demo1234', phone: '+639191234569' },
+      { id: 'REC-1001', name: 'Ana Reyes', role: 'Receptionist', pw: 'demo1234', phone: '+639171234567' },
+      { id: 'DR-2001', name: 'Dr. Alexander Reyes, MD', role: 'Doctor', pw: 'demo1234', phone: '+639191234569' },
+      { id: 'RN-3001', name: 'Maria Panitan, RN', role: 'Nurse', pw: 'demo1234', phone: '+639181234568' },
     ],
+    // Staff directory from hospital_queue_db.sql. st: available | busy | off
     staff: [
-      { name: 'Dr. Alexander', role: 'Doctor', spec: 'Emergency Physician', st: 'available' },
-      { name: 'Dr. Ocampo', role: 'Doctor', spec: 'Internal Medicine', st: 'busy' },
-      { name: 'Dr. Jimenez', role: 'Doctor', spec: 'Orthopedics', st: 'available' },
-      { name: 'Dr. Griego', role: 'Doctor', spec: 'Dermatology', st: 'off' },
-      { name: 'Maria P.', role: 'Nurse', spec: 'Triage Nurse', st: 'available' },
-      { name: 'Panitan, S.', role: 'Nurse', spec: 'Staff Nurse', st: 'busy' },
-      { name: 'Morillo, J.', role: 'Nurse', spec: 'Staff Nurse', st: 'available' },
+      { sid: 'DR-2001', name: 'Dr. Alexander Reyes, MD', role: 'Doctor', spec: 'Emergency Medicine Physician', st: 'available' },
+      { sid: 'DR-2002', name: 'Dr. Luis Ocampo, MD', role: 'Doctor', spec: 'Internal Medicine Physician', st: 'busy' },
+      { sid: 'DR-2003', name: 'Dr. Bianca Jimenez, MD', role: 'Doctor', spec: 'Family Medicine Physician', st: 'available' },
+      { sid: 'DR-2004', name: 'Dr. Manuel Griego, MD', role: 'Doctor', spec: 'Dermatologist', st: 'busy' },
+      { sid: 'RN-3001', name: 'Maria Panitan, RN', role: 'Nurse', spec: 'Registered Nurse', st: 'available' },
+      { sid: 'RN-3002', name: 'Sofia Panitan, RN', role: 'Nurse', spec: 'Registered Nurse', st: 'busy' },
+      { sid: 'RN-3003', name: 'Jose Morillo, RN', role: 'Nurse', spec: 'Triage Nurse', st: 'available' },
     ],
-    // st: waiting | in_care | admitted | out.  t0 = registration time (ms); tSeen = first seen (stops the wait clock)
+    // st: waiting | in_care | admitted | out.  t0 = registered (ms); tSeen = seen (stops the wait clock)
     P: [
-      { id: 1, n: 'Jackson, P.', age: 54, p: 1, c: 'Chest pain', dx: 'Angina', room: 1, doc: 'Dr. Alexander', nu: 'Maria P.', t0: ago(84), st: 'waiting' },
-      { id: 2, n: 'Cruz, A.', age: 31, p: 2, c: 'High fever', dx: 'Pending', room: 2, doc: 'Dr. Ocampo', nu: 'Panitan, S.', t0: ago(939), st: 'waiting' },
-      { id: 3, n: 'Mapili, M.', age: 27, p: 3, c: 'Sprain', dx: 'Pending', room: 3, doc: 'Dr. Jimenez', nu: 'Morillo, J.', t0: ago(2657), st: 'waiting' },
-      { id: 4, n: 'Villas, J.', age: 19, p: 4, c: 'Minor rash', dx: 'Pending', room: 4, doc: 'Dr. Griego', nu: 'Maria P.', t0: ago(3423), st: 'waiting' },
+      { id: 1, n: 'Patrick Jackson', age: 58, p: 1, c: 'Chest pain', dx: 'Angina', room: 1, doc: 'Dr. Luis Ocampo, MD', nu: 'Maria Panitan, RN', t0: ago(84), tSeen: ago(60), st: 'in_care' },
+      { id: 2, n: 'Angela Cruz', age: 34, p: 2, c: 'High fever', dx: 'Viral infection', room: 2, doc: 'Dr. Alexander Reyes, MD', nu: 'Sofia Panitan, RN', t0: ago(939), tSeen: ago(600), st: 'in_care' },
+      { id: 3, n: 'Miguel Mapili', age: 27, p: 3, c: 'Ankle sprain', dx: 'Ankle sprain', room: 3, doc: 'Dr. Bianca Jimenez, MD', nu: 'Jose Morillo, RN', t0: ago(2657), st: 'waiting' },
+      { id: 4, n: 'Joshua Villas', age: 19, p: 4, c: 'Minor rash', dx: 'Contact dermatitis', room: 4, doc: 'Dr. Manuel Griego, MD', nu: 'Maria Panitan, RN', t0: ago(3423), st: 'waiting' },
     ],
     tasks: [
-      { id: 100, pid: 1, nurse: 'Maria P.', title: 'Re-check', due: Date.now() - 60000 },
-      { id: 101, pid: 2, nurse: 'Panitan, S.', title: 'Re-check', due: Date.now() + 12 * 60000 },
-      { id: 102, pid: 3, nurse: 'Morillo, J.', title: 'Re-check', due: Date.now() + 40 * 60000 },
-      { id: 103, pid: 4, nurse: 'Maria P.', title: 'Re-check', due: Date.now() + 95 * 60000 },
+      { id: 1, pid: 1, nurse: 'Maria Panitan, RN', title: 'Re-check', due: Date.now() - 60000 },
+      { id: 2, pid: 2, nurse: 'Sofia Panitan, RN', title: 'Re-check', due: Date.now() + 20 * 60000 },
+      { id: 3, pid: 3, nurse: 'Jose Morillo, RN', title: 'Re-check', due: Date.now() + 45 * 60000 },
+      { id: 4, pid: 4, nurse: 'Maria Panitan, RN', title: 'Re-check', due: Date.now() + 15 * 60000 },
     ],
     // notification: [title, timestamp, detail, hot, onlyForName|null]
-    NT: {
-      Receptionist: [['Patient priority set', ago(5), 'Jackson, P. queued as P1', true, null]],
-      Nurse: [['Patient re-check overdue', ago(60), 'Jackson, P. · Room 01', true, 'Maria P.']],
-      Doctor: [['New patient assigned', ago(120), 'Jackson, P. · Chest pain', true, 'Dr. Alexander']],
-    },
+    NT: { Receptionist: [], Nurse: [], Doctor: [] },
   });
-  TF.state.tid = 200;
+  TF.state.tid = 5;
   TF.blank = { reg: blankReg, account: blankAccount };
+
+  // Staff ID format, same as the hospital prototype: REC-#### receptionist, RN-#### nurse, DR-#### doctor.
+  TF.data.ID_PREFIX = { Receptionist: 'REC', Nurse: 'RN', Doctor: 'DR' };
+  TF.data.ID_EXAMPLE = { Receptionist: 'REC-1001', Nurse: 'RN-3001', Doctor: 'DR-2001' };
+
+  // Brings in accounts exported from the old PHP/MySQL `users` table (see src/accounts-import.js).
+  // Passwords were PHP hashes and can't be read here, so each imported person sets a new one via "Forgot password?".
+  TF.importAccounts = () => {
+    const phone = (v) => { const d = String(v || '').replace(/\D/g, ''); return d.startsWith('0') ? '+63' + d.slice(1) : d.startsWith('63') ? '+' + d : d ? '+' + d : ''; };
+    let n = 0;
+    (window.TF_IMPORT || []).forEach((u) => {
+      const id = String(u.staff_id || u.id || '').trim().toUpperCase(), name = u.full_name || u.name;
+      const role = { rec: 'Receptionist', nurse: 'Nurse', doc: 'Doctor' }[u.role] || u.role;
+      if (!id || !name) return;
+      const old = S.accounts.find((a) => a.id === id);
+      if (old && old.imp) return;                                   // already imported; keep the password they set since
+      const acc = { id, name, role, pw: null, phone: phone(u.mobile || u.phone), imp: true };
+      if (old) Object.assign(old, acc); else S.accounts.push(acc);  // a real account replaces a demo one with the same ID
+      n++;
+      const prof = S.staff.find((x) => x.sid === id);
+      if (prof) { prof.name = name; if (u.status) prof.st = u.status; }
+      else if (role !== 'Receptionist') S.staff.push({ sid: id, name, role, spec: u.specialty || u.spec || (role === 'Doctor' ? 'Physician' : 'Registered Nurse'), st: u.status || 'available' });
+    });
+    return n;
+  };
 
   const PERSIST = ['P', 'NT', 'nid', 'tid', 'accounts', 'staff', 'tasks'];
   TF.store = {

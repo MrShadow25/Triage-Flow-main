@@ -10,7 +10,7 @@
     wait: (p) => Math.max(0, Math.floor(((p.tSeen || Date.now()) - p.t0) / 1000)), // seconds; stops once seen
     // Doctors and nurses only see their own patients; receptionists see everyone.
     mine() {
-      const n = S.user && S.user.name, a = P.active();
+      const m = ST.me(), n = m && m.name, a = P.active();
       return S.role === 'Doctor' ? a.filter((p) => p.doc === n) : S.role === 'Nurse' ? a.filter((p) => p.nu === n) : a;
     },
   });
@@ -21,8 +21,8 @@
     docs: () => ST.list('Doctor'),
     nurses: () => ST.list('Nurse'),
     load: (s) => P.active().filter((p) => (s.role === 'Doctor' ? p.doc : p.nu) === s.name).length,
-    me: () => S.user && S.staff.find((s) => s.name === S.user.name && s.role === S.role),
-    pick: (role) => ST.list(role).filter((s) => s.st === 'available' && ST.load(s) < C.MAX_LOAD)
+    me: () => S.user && S.staff.find((s) => s.sid === S.user.id),
+    pick: (role) => ST.list(role).filter((s) => s.st === 'available' && ST.load(s) < C.MAX_LOAD[role])
       .sort((a, b) => ST.load(a) - ST.load(b))[0], // fewest patients first
   });
 

@@ -82,10 +82,9 @@
       S.user = acc; S.role = acc.role; S.sel = null; S.tab = TABS[acc.role][0][0]; S.sub = ''; S.notif = false; S.lf.pw = '';
       toast('Signed in as ' + acc.name);
     } else if (tf.purpose === 'verify') {
-      const a = S.ca;
-      S.accounts.push({ id: a.id.trim().toUpperCase(), name: a.name.trim(), role: a.role, pw: a.pw, phone: a.phone });
-      const nm = a.name.trim();
-      if (a.role !== 'Receptionist' && !S.staff.some((x) => x.name === nm)) S.staff.push({ name: nm, role: a.role, spec: a.role === 'Doctor' ? 'Physician' : 'Staff Nurse', st: 'available' });
+      const a = S.ca, sid = a.id.trim().toUpperCase(), prof = S.staff.find((x) => x.sid === sid);
+      S.accounts.push({ id: sid, name: prof ? prof.name : a.name.trim(), role: a.role, pw: a.pw, phone: a.phone });
+      if (!prof && a.role !== 'Receptionist') S.staff.push({ sid, name: a.name.trim(), role: a.role, spec: a.role === 'Doctor' ? 'Physician' : 'Registered Nurse', st: 'available' });
       TF.engine.autoAssign();
       S.lf = { id: a.id.trim().toUpperCase(), pw: '' }; S.role = a.role; S.ca = TF.blank.account(); S.scr = 'login';
       toast('Number verified. Account created. Sign in to continue.');
@@ -110,18 +109,21 @@
       const id = S.lf.id.trim().toUpperCase();
       if (!id || !S.lf.pw) return fail('Enter your Staff ID and password.');
       const acc = S.accounts.find((a) => a.id === id);
+      if (acc && acc.pw === null && acc.role === S.role) return fail('This account was imported. Tap "Forgot password?" to set a new password.');
       if (!acc || acc.pw !== S.lf.pw || acc.role !== S.role) return fail('Staff ID, password or role is incorrect.');
       S.err = '';
       start2FA('login', { id: acc.id }, acc.phone);
     },
 
     'create-account'() {
-      const a = S.ca, id = a.id.trim().toUpperCase(), phone = normalizePhone(a.phone);
+      const a = S.ca, id = a.id.trim().toUpperCase(), phone = normalizePhone(a.phone), prof = S.staff.find((x) => x.sid === id);
       if (a.name.trim().length < 2) return fail('Enter your full name.');
-      if (!/^[A-Z0-9-]{4,12}$/.test(id)) return fail('Staff ID should be 4–12 letters, numbers or dashes, e.g. RC-1041.');
-      if (S.accounts.some((x) => x.id === id)) return fail('That Staff ID already has an account.');
+      const pre = TF.data.ID_PREFIX[a.role];
+      if (!new RegExp('^' + pre + '-\\d{3,6}$').test(id)) return fail(`A ${a.role} Staff ID looks like ${TF.data.ID_EXAMPLE[a.role]} (${pre}- followed by numbers).`);
+      if (S.accounts.some((x) => x.id === id)) return fail('That Staff ID is already registered.');
+      if (prof && prof.role !== a.role) return fail('That Staff ID belongs to a different role.');
       if (a.pw.length < C.MIN_PASSWORD) return fail(`Password must be at least ${C.MIN_PASSWORD} characters.`);
-      if (!a.code.trim()) return fail('Enter your hospital code.');
+      if (a.code !== C.HOSPITAL_CODE) return fail('Invalid hospital code.');
       if (!phone) return fail('Enter a valid Philippine mobile number, e.g. +63 917 123 4567.');
       a.phone = phone; S.err = ''; S.scr = 'vn';
       start2FA('verify', {}, phone);
@@ -314,5 +316,6 @@
 
   /* =====================  START  ===================== */
   TF.store.load();
+  if (TF.importAccounts()) TF.store.save();
   render();
 })();

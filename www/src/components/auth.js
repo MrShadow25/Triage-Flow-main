@@ -48,12 +48,12 @@
       <label id="role-l">I am a</label>
       <div class="sw" role="group" aria-labelledby="role-l">${TF.data.ROLES.map((r) =>
         `<button class="${r === S.role ? 'on' : ''}" data-action="role" data-v="${r}" aria-pressed="${r === S.role}">${r}</button>`).join('')}</div>
-      ${field('Staff ID', 'l1', 'lf.id', { ph: 'RC-1042', auto: 'username' })}
+      ${field('Staff ID', 'l1', 'lf.id', { ph: TF.data.ID_EXAMPLE[S.role], auto: 'username' })}
       ${field('Password', 'l2', 'lf.pw', { type: 'password', auto: 'current-password' })}
       ${errLine()}
       <button class="btn" data-action="signin">Sign In</button>
       <div class="row"><button class="lk" data-action="goto" data-v="cp">Forgot password?</button><button class="lk" data-action="goto" data-v="ca">Create account</button></div>
-      ${C.DEMO_MODE ? `<details class="demo"><summary>Demo accounts</summary><p>RC-1042 Receptionist · RC-1043 Nurse · RC-1044 Doctor<br>Password: demo1234</p></details>` : ''}</div>`;
+      ${C.DEMO_MODE ? `<details class="demo"><summary>Demo accounts</summary><p>Your accounts: REC-1001 Receptionist · RN-3001 Nurse · DR-2001 Doctor · RN-3005 Nurse<br>First time here? Tap Forgot password? to set your password.</p></details>` : ''}</div>`;
   }
 
   function createAccount() {
@@ -61,7 +61,7 @@
     return `<div class="card" style="width:100%"><h2 style="margin:0;font-size:20px">Create your Account</h2>
       <p class="mu">Enter your details to create a secure account for hospital access.</p>
       ${field('Full Name', 'a1', 'ca.name', { ph: 'Ana Reyes', auto: 'name' })}
-      ${field('Staff ID', 'a2', 'ca.id', { ph: 'RC-1041' })}
+      ${field('Staff ID', 'a2', 'ca.id', { ph: TF.data.ID_EXAMPLE[S.ca.role] })}
       <label for="a3">Role</label><select id="a3" data-model="ca.role">${roleOpts}</select>
       ${field('Password (min. ' + C.MIN_PASSWORD + ' characters)', 'a4', 'ca.pw', { type: 'password', auto: 'new-password' })}
       ${field('Hospital Code', 'a5', 'ca.code', { type: 'password' })}
@@ -74,7 +74,7 @@
   function changePassword() {
     return `<div class="card" style="width:100%"><h2 style="margin:0;font-size:20px">Set New Password</h2>
       <p class="mu">We will text a code to the mobile number on your account to confirm it is you.</p>
-      ${field('Staff ID', 'b0', 'cp.id', { ph: 'RC-1042', auto: 'username' })}
+      ${field('Staff ID', 'b0', 'cp.id', { ph: TF.data.ID_EXAMPLE[S.role], auto: 'username' })}
       ${field('New Password', 'b1', 'cp.pw', { type: 'password', auto: 'new-password' })}
       ${field('Confirm Password', 'b2', 'cp.pw2', { type: 'password', auto: 'new-password' })}
       ${errLine()}

@@ -6,7 +6,7 @@
   const { pill, patientCard } = TF.components;
 
   TF.components.nurse = (tab) => {
-    const mine = TF.patients.mine(), me = TF.staff.me() || { st: 'off' };
+    const mine = TF.patients.mine(), me = TF.staff.me() || { st: 'off', name: '' };
     const label = me.st === 'available' ? 'Available' : me.st === 'busy' ? 'Busy' : 'Off-duty';
 
     if (tab === 'patients') {
@@ -15,7 +15,7 @@
     }
 
     if (tab === 'task') {
-      const tasks = S.tasks.filter((t) => t.nurse === S.user.name && TF.patients.byId(t.pid)).sort((a, b) => a.due - b.due);
+      const tasks = S.tasks.filter((t) => t.nurse === me.name && TF.patients.byId(t.pid)).sort((a, b) => a.due - b.due);
       const row = (t) => { const p = TF.patients.byId(t.pid), over = t.due <= Date.now(); return `<div class="card row" style="margin-bottom:8px"><span>${pill(p)}
         <span style="margin-left:6px">${esc(t.title)} ${esc(p.n)}<br><span class="mu" data-due="${t.id}">${duePhrase(t.due)}</span></span></span>
         <button class="chip ${over ? 'r' : 'g'}" data-action="task-done" data-id="${t.id}">Done</button></div>`; };
