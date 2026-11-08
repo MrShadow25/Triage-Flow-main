@@ -37,3 +37,8 @@ IDs: REC-#### receptionist, RN-#### nurse, DR-#### doctor. Demo logins (password
 Hospital code for sign-up: 12345678. Staff directory, patients and tasks use the prototype's SQL seed data.
 To bring over accounts made in the old PHP version: fill www/src/accounts-import.js (instructions inside).
 Imported people set a new password once through "Forgot password?" (the old PHP hashes cannot be read here).
+
+## Two-factor sign-in
+Default (prototype): a 6-digit code is shown on screen; nothing to install and no SMS is sent.
+To use real free 2FA instead, set TWO_FACTOR: 'authenticator' in www/src/state.js. People then link Google/Microsoft
+Authenticator once (button + setup key) and type the app's 6-digit code. No SMS, no Firebase, no cost, works offline.

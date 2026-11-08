@@ -18,27 +18,28 @@
       <p class="otp-err" id="otp-err" role="alert">${esc(tf.error)}</p>`;
   }
 
-  function resendHtml(tf) {
-    const left = Math.ceil((tf.resendAt - Date.now()) / 1000);
-    return left > 0
-      ? `Resend code in 0:${pad2(left)}`
-      : '<button class="lk" data-action="resend">Resend code</button>';
-  }
+  const groups = (k) => k.match(/.{1,4}/g).join(' ');
+  // Shown the first time: QR code to scan with Google / Microsoft Authenticator (or type the key by hand).
+  const setupPanel = (tf) => {
+    if (tf.demo) return `<p class="mu" id="tf-d">Enter the 6-digit code we sent to ${maskPhone(tf.phone)}.</p>
+      <p class="demo-code">Prototype mode: no SMS is sent. Your code is <b>${tf.code}</b>.</p>`;
+    if (!tf.enroll) return `<p class="mu" id="tf-d">Open your authenticator app and enter the 6-digit code shown for <b>TriageFlow</b>.</p>`;
+    const id = tf.ctx.id || S.ca.id.trim().toUpperCase();
+    return `<p class="mu" id="tf-d">Set up your authenticator app (one time):<br>1. Install Google Authenticator or Microsoft Authenticator.<br>2. Tap the button below, or add the key by hand (choose "Enter a setup key").<br>3. Type the 6-digit code it shows.</p>
+      <a class="btn" style="display:block;text-decoration:none;text-align:center" href="${esc(TF.totp.uri(id, tf.secret))}">Add to authenticator app</a>
+      <p class="mu" style="word-break:break-all;margin-top:10px">Setup key: <b>${groups(tf.secret)}</b><br><button class="lk" data-action="copy-key">Copy key</button></p>`;
+  };
 
-  const demoCode = (tf) => (C.DEMO_MODE
-    ? `<p class="demo-code">Prototype mode: no SMS is sent. Your code is <b>${tf.code}</b>.</p>` : '');
-
-  const REASON = { login: 'to finish signing in', reset: 'to confirm your new password', verify: 'so we can use it for two-factor sign-in' };
-
+  
   // Popup shown over the Sign In / Change Password screens.
   function modal(tf) {
     return `<div class="scrim"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="tf-h" aria-describedby="tf-d">
       <div class="badge2fa" aria-hidden="true">2FA</div>
       <h2 id="tf-h">Two-Factor Authentication</h2>
-      <p class="mu" id="tf-d">Enter the 6-digit code we sent to ${maskPhone(tf.phone)} ${REASON[tf.purpose]}.</p>
-      ${demoCode(tf)}${otpBoxes(tf)}
+      ${setupPanel(tf)}${otpBoxes(tf)}
       <button class="btn" data-action="verify">Verify</button>
-      <div class="mu" id="resend" style="margin-top:10px">${resendHtml(tf)}</div>
+      ${tf.demo ? '<button class="lk" data-action="resend">Resend code</button>' : ''}
+      ${tf.purpose === 'login' && !tf.enroll && !tf.demo ? '<button class="lk" data-action="lost-auth">Lost your phone?</button>' : ''}
       <button class="lk" data-action="cancel2fa">Cancel</button></div></div>`;
   }
 
@@ -53,7 +54,7 @@
       ${errLine()}
       <button class="btn" data-action="signin">Sign In</button>
       <div class="row"><button class="lk" data-action="goto" data-v="cp">Forgot password?</button><button class="lk" data-action="goto" data-v="ca">Create account</button></div>
-      ${C.DEMO_MODE ? `<details class="demo"><summary>Demo accounts</summary><p>Your accounts: REC-1001 Receptionist · RN-3001 Nurse · DR-2001 Doctor · RN-3005 Nurse<br>First time here? Tap Forgot password? to set your password.</p></details>` : ''}</div>`;
+      ${C.DEMO_MODE ? `<details class="demo"><summary>Demo accounts</summary><p>Your accounts: REC-1001 Receptionist · RN-3001 Nurse · DR-2001 Doctor · RN-3005 Nurse<br>Password for all: demo1234</p></details>` : ''}</div>`;
   }
 
   function createAccount() {
@@ -73,7 +74,7 @@
 
   function changePassword() {
     return `<div class="card" style="width:100%"><h2 style="margin:0;font-size:20px">Set New Password</h2>
-      <p class="mu">We will text a code to the mobile number on your account to confirm it is you.</p>
+      <p class="mu">${C.TWO_FACTOR === 'demo' ? 'We will send a code to the mobile number on your account to confirm it is you.' : 'Enter the code from your authenticator app to confirm it is you.'}</p>
       ${field('Staff ID', 'b0', 'cp.id', { ph: TF.data.ID_EXAMPLE[S.role], auto: 'username' })}
       ${field('New Password', 'b1', 'cp.pw', { type: 'password', auto: 'new-password' })}
       ${field('Confirm Password', 'b2', 'cp.pw2', { type: 'password', auto: 'new-password' })}
@@ -85,19 +86,17 @@
   function verifyNumber() {
     const tf = S.tf;
     if (!tf) return '';
-    return `<div class="card vn" style="width:100%;text-align:center"><h2>Confirm your mobile number</h2>
-      <p class="mu">Enter the 6-digit code we sent to ${maskPhone(tf.phone)} so we can use it for two-factor sign-in.</p>
-      ${demoCode(tf)}${otpBoxes(tf)}
+    return `<div class="card vn" style="width:100%;text-align:center"><h2>${tf.demo ? 'Confirm your mobile number' : 'Link your authenticator'}</h2>
+      ${setupPanel(tf)}${otpBoxes(tf)}
       <button class="btn" data-action="verify">Verify and finish</button>
-      <div class="mu" id="resend" style="margin-top:10px">${resendHtml(tf)}</div>
-      <button class="lk" data-action="change-number">Change number</button></div>`;
+      <button class="lk" data-action="change-number">Back</button></div>`;
   }
 
   const SCREENS = {
     login: ['Sign In', signIn],
     ca: ['Create Account', createAccount],
     cp: ['Change Password', changePassword],
-    vn: ['Verify Your Number', verifyNumber],
+    vn: ['Authenticator Setup', verifyNumber],
   };
 
   function screen() {
@@ -105,5 +104,5 @@
     return authHeader(title) + `<main class="mid">${body()}</main>`;
   }
 
-  TF.components.auth = { screen, modal, resendHtml };
+  TF.components.auth = { screen, modal };
 })();

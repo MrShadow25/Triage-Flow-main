@@ -6,6 +6,7 @@
 
   TF.config = {
     DEMO_MODE: true, MAX_ATTEMPTS: 3, RESEND_SECONDS: 30, CODE_TTL_MS: 5 * 60 * 1000, MIN_PASSWORD: 8,
+    TWO_FACTOR: 'demo',   // 'demo' = code shown on screen (nothing to install) | 'authenticator' = real TOTP app codes
     STORE_KEY: 'triageflow-v3',
     RECHECK_MIN: { 1: 15, 2: 30, 3: 60, 4: 120, 5: 240 }, // nurse re-check interval per priority
     MAX_LOAD: { Doctor: 3, Nurse: 2 },                    // max active patients per doctor / nurse (from hospital config.php)
@@ -87,8 +88,8 @@
       const role = { rec: 'Receptionist', nurse: 'Nurse', doc: 'Doctor' }[u.role] || u.role;
       if (!id || !name) return;
       const old = S.accounts.find((a) => a.id === id);
-      if (old && old.imp) return;                                   // already imported; keep the password they set since
-      const acc = { id, name, role, pw: null, phone: phone(u.mobile || u.phone), imp: true };
+      if (old && old.imp) { if (old.pw === null && u.pw) old.pw = u.pw; return; } // already imported; keep any password set since
+      const acc = { id, name, role, pw: u.password || null, phone: phone(u.mobile || u.phone), imp: true };
       if (old) Object.assign(old, acc); else S.accounts.push(acc);  // a real account replaces a demo one with the same ID
       n++;
       const prof = S.staff.find((x) => x.sid === id);

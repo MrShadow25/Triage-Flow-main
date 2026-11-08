@@ -7,8 +7,8 @@
  * (role is rec / nurse / doc). Each person then taps "Forgot password?" once to set a new password.
  */
 window.TF_IMPORT = [
-  { staff_id: 'DR-2001',  full_name: 'Dr. Alexander Reyes, MD',  role: 'doc',   specialty: 'Emergency Medicine Physician', mobile: '09089195113', status: 'available' },
-  { staff_id: 'RN-3001',  full_name: 'Maria Panitan, RN',        role: 'nurse', specialty: 'Registered Nurse',             mobile: '09089195113', status: 'available' },
-  { staff_id: 'REC-1001', full_name: 'Angela Mae Santos',        role: 'rec',   specialty: null,                           mobile: '09089195113' },
-  { staff_id: 'RN-3005',  full_name: 'Maria Clara Dela Cruz',    role: 'nurse', specialty: 'Registered Nurse (RN)',        mobile: '09089195113', status: 'busy' },
+  { staff_id: 'DR-2001',  full_name: 'Dr. Alexander Reyes, MD',  role: 'doc',   specialty: 'Emergency Medicine Physician', password: 'demo1234', pw: 'demo1234', pw: 'demo1234', mobile: '09089195113', status: 'available' },
+  { staff_id: 'RN-3001',  full_name: 'Maria Panitan, RN',        role: 'nurse', specialty: 'Registered Nurse',             password: 'demo1234', pw: 'demo1234', pw: 'demo1234', mobile: '09089195113', status: 'available' },
+  { staff_id: 'REC-1001', full_name: 'Angela Mae Santos',        role: 'rec',   specialty: null,                           password: 'demo1234', pw: 'demo1234', pw: 'demo1234', mobile: '09089195113' },
+  { staff_id: 'RN-3005',  full_name: 'Maria Clara Dela Cruz',    role: 'nurse', specialty: 'Registered Nurse (RN)',        password: 'demo1234', pw: 'demo1234', pw: 'demo1234', mobile: '09089195113', status: 'busy' },
 ];

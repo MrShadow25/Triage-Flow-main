@@ -39,11 +39,10 @@
 
   /* =====================  2FA  ===================== */
   function newTf(purpose, ctx, phone) {
-    return {
-      purpose, ctx, phone, code: randomCode(), digits: ['', '', '', '', '', ''],
-      attempts: C.MAX_ATTEMPTS, error: '',
-      expires: Date.now() + C.CODE_TTL_MS, resendAt: Date.now() + C.RESEND_SECONDS * 1000,
-    };
+    if (C.TWO_FACTOR === 'demo') return { purpose, ctx, phone, demo: true, enroll: false, code: randomCode(), digits: ['', '', '', '', '', ''], attempts: C.MAX_ATTEMPTS, error: '' };
+    const acc = ctx.id && S.accounts.find((x) => x.id === ctx.id);
+    const enroll = !acc || !acc.tsec;                       // first time: show the QR code to set up the app
+    return { purpose, ctx, phone, enroll, secret: enroll ? TF.totp.newSecret() : acc.tsec, digits: ['', '', '', '', '', ''], attempts: C.MAX_ATTEMPTS, error: '' };
   }
   function start2FA(purpose, ctx, phone) {
     S.tf = newTf(purpose, ctx, phone);
@@ -62,8 +61,7 @@
     const tf = S.tf; if (!tf) return;
     const entered = tf.digits.join('');
     if (entered.length < 6) return setTfError('Enter all 6 digits.');
-    if (Date.now() > tf.expires) return setTfError('This code has expired. Request a new one.');
-    if (entered !== tf.code) {
+    if (!(tf.demo ? entered === tf.code : TF.totp.check(tf.secret, entered))) {
       tf.attempts--;
       if (tf.attempts <= 0) {
         const back = tf.purpose === 'verify' ? 'ca' : tf.purpose === 'reset' ? 'cp' : 'login';
@@ -79,15 +77,16 @@
     S.tf = null; S.err = '';
     if (tf.purpose === 'login') {
       const acc = S.accounts.find((a) => a.id === tf.ctx.id);
+      if (tf.enroll) acc.tsec = tf.secret;
       S.user = acc; S.role = acc.role; S.sel = null; S.tab = TABS[acc.role][0][0]; S.sub = ''; S.notif = false; S.lf.pw = '';
       toast('Signed in as ' + acc.name);
     } else if (tf.purpose === 'verify') {
       const a = S.ca, sid = a.id.trim().toUpperCase(), prof = S.staff.find((x) => x.sid === sid);
-      S.accounts.push({ id: sid, name: prof ? prof.name : a.name.trim(), role: a.role, pw: a.pw, phone: a.phone });
+      S.accounts.push({ id: sid, name: prof ? prof.name : a.name.trim(), role: a.role, pw: a.pw, phone: a.phone, tsec: tf.secret });
       if (!prof && a.role !== 'Receptionist') S.staff.push({ sid, name: a.name.trim(), role: a.role, spec: a.role === 'Doctor' ? 'Physician' : 'Registered Nurse', st: 'available' });
       TF.engine.autoAssign();
       S.lf = { id: a.id.trim().toUpperCase(), pw: '' }; S.role = a.role; S.ca = TF.blank.account(); S.scr = 'login';
-      toast('Number verified. Account created. Sign in to continue.');
+      toast('Authenticator linked. Account created. Sign in to continue.');
     } else if (tf.purpose === 'reset') {
       S.accounts.find((a) => a.id === tf.ctx.id).pw = tf.ctx.pw;
       S.cp = { id: '', pw: '', pw2: '' }; S.scr = 'login';
@@ -136,6 +135,7 @@
       if (!acc) return fail('No account found for that Staff ID.');
       if (c.pw.length < C.MIN_PASSWORD) return fail(`Password must be at least ${C.MIN_PASSWORD} characters.`);
       if (c.pw !== c.pw2) return fail('Passwords must match.');
+      if (C.TWO_FACTOR !== 'demo' && !acc.tsec) return fail('Sign in once first to link your authenticator app, then you can reset your password.');
       S.err = '';
       start2FA('reset', { id: acc.id, pw: c.pw }, acc.phone);
     },
@@ -144,11 +144,21 @@
     verify,
     cancel2fa() { closeTf(); },
     resend() {
-      const tf = S.tf; if (!tf) return;
-      Object.assign(tf, { code: randomCode(), digits: ['', '', '', '', '', ''], attempts: C.MAX_ATTEMPTS, error: '',
-        expires: Date.now() + C.CODE_TTL_MS, resendAt: Date.now() + C.RESEND_SECONDS * 1000 });
-      S.scr === 'vn' ? render() : renderModal();
-      toast('A new code was sent.');
+      const tf = S.tf; if (!tf || !tf.demo) return;
+      Object.assign(tf, { code: randomCode(), digits: ['', '', '', '', '', ''], attempts: C.MAX_ATTEMPTS, error: '' });
+      S.scr === 'vn' ? render() : renderModal(); toast('New code generated');
+    },
+    'copy-key'() {
+      const k = S.tf && S.tf.secret; if (!k) return;
+      (navigator.clipboard ? navigator.clipboard.writeText(k) : Promise.reject()).then(() => toast('Key copied'), () => toast('Select the key and copy it by hand'));
+    },
+    'lost-auth'() {
+      const tf = S.tf; if (!tf || tf.purpose !== 'login') return;
+      const code = prompt('Lost your phone? Enter the hospital code to link a new authenticator.');
+      if (code === null) return;
+      if (code !== C.HOSPITAL_CODE) return toast('Invalid hospital code.');
+      const acc = S.accounts.find((x) => x.id === tf.ctx.id); acc.tsec = null;
+      S.tf = newTf('login', tf.ctx, tf.phone); renderModal();
     },
 
     /* --- session / navigation --- */
@@ -297,10 +307,6 @@
   setInterval(() => {
     document.querySelectorAll('[data-t]').forEach((el) => { const p = TF.patients.byId(el.dataset.t); if (p) el.textContent = fmt(TF.patients.wait(p)); });
     document.querySelectorAll('[data-due]').forEach((el) => { const t = S.tasks.find((x) => x.id == el.dataset.due); if (t) el.textContent = TF.utils.duePhrase(t.due); });
-    if (S.tf) { // 2FA resend countdown
-      const el = $('#resend'), html = ui.auth.resendHtml(S.tf);
-      if (el && el.innerHTML !== html) el.innerHTML = html;
-    }
   }, 1000);
 
   // Live sync: another tab/window of the app (e.g. a doctor signed in next to the receptionist) changed the data.
