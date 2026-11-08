@@ -12,7 +12,7 @@
     const inner = `
       <span class="row"><span>${TF.components.pill(p)} <b style="margin-left:6px;font-size:16px">${esc(p.n)}</b></span></span>
       <span class="row" style="margin-top:10px">
-        <span class="mu">${esc(p.c)}<br>Dx: ${esc(p.dx)}</span>
+        <span class="mu">${esc(p.c)}<br>Diagnosis: ${esc(TF.patients.dx(p))}</span>
         <span><span class="chip">${roomLabel(p.room)}</span> <span class="chip ${wc(w)}" data-t="${p.id}">${fmt(w)}</span></span>
       </span>`;
     return clickable

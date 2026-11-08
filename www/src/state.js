@@ -27,9 +27,19 @@
   };
 
   const blankReg = () => ({ n: '', a: '', c: '', dx: '' });
-  const blankAccount = () => ({ name: '', id: '', role: 'Nurse', pw: '', code: '', phone: '' });
+  const blankAccount = () => ({ name: '', id: '', role: 'Nurse', pw: '', code: '', phone: '', spec: '' });
 
   // NOTE: prototype only. Passwords are plain text in localStorage. A real build must hash them server-side.
+  // notification: [title, timestamp, detail, hot, onlyForName|null]
+  function seedNT() {
+    return {
+      Receptionist: [['Patient priority set', ago(5), 'Patrick Jackson queued as P1', true, null]],
+      Nurse: [['Patient re-check overdue', ago(60), 'Patrick Jackson · Room 01', true, 'Maria Panitan, RN'], ['New patient assigned', ago(900), 'Angela Cruz · High fever', false, 'Sofia Panitan, RN']],
+      Doctor: [['New patient assigned', ago(120), 'Patrick Jackson · Chest pain', true, 'Dr. Luis Ocampo, MD'], ['New patient assigned', ago(900), 'Angela Cruz · High fever', false, 'Dr. Alexander Reyes, MD']],
+    };
+  }
+  TF.seedNT = seedNT;
+
   const S = (TF.state = {
     user: null, role: 'Receptionist', scr: 'login', tab: '', sub: '', notif: false,
     err: '', tf: null,
@@ -38,6 +48,7 @@
     sel: null, room: null, rp: '', dxv: '', newSym: '', rd: null, rn: null,
     f: blankReg(), syms: [...TF.data.SYM], chk: [0, 1, 2, 3, 4], pri: 1,
     // shared data (persisted + synced between tabs)
+    seen: {},   // per user: when they last opened the bell
     nid: 5, tid: 5,
     // Demo logins (password demo1234). Other staff claim their profile via Create account (hospital code 12345678).
     accounts: [
@@ -69,7 +80,7 @@
       { id: 4, pid: 4, nurse: 'Maria Panitan, RN', title: 'Re-check', due: Date.now() + 15 * 60000 },
     ],
     // notification: [title, timestamp, detail, hot, onlyForName|null]
-    NT: { Receptionist: [], Nurse: [], Doctor: [] },
+    NT: seedNT(),
   });
   TF.state.tid = 5;
   TF.blank = { reg: blankReg, account: blankAccount };
@@ -99,7 +110,7 @@
     return n;
   };
 
-  const PERSIST = ['P', 'NT', 'nid', 'tid', 'accounts', 'staff', 'tasks'];
+  const PERSIST = ['seen', 'P', 'NT', 'nid', 'tid', 'accounts', 'staff', 'tasks'];
   TF.store = {
     save() { try { const o = {}; PERSIST.forEach((k) => (o[k] = S[k])); localStorage.setItem(TF.config.STORE_KEY, JSON.stringify(o)); } catch (e) { /* in-memory only */ } },
     load() { try { const d = JSON.parse(localStorage.getItem(TF.config.STORE_KEY) || 'null'); if (d) PERSIST.forEach((k) => { if (d[k] !== undefined) S[k] = d[k]; }); } catch (e) { /* ignore */ } },

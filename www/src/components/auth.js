@@ -66,6 +66,7 @@
       <label for="a3">Role</label><select id="a3" data-model="ca.role">${roleOpts}</select>
       ${field('Password (min. ' + C.MIN_PASSWORD + ' characters)', 'a4', 'ca.pw', { type: 'password', auto: 'new-password' })}
       ${field('Hospital Code', 'a5', 'ca.code', { type: 'password' })}
+      ${field('Specialty / Title (doctors and nurses, optional)', 'a7', 'ca.spec', { ph: 'e.g. Emergency Medicine Physician' })}
       ${field('Mobile Number (for 2FA)', 'a6', 'ca.phone', { type: 'tel', ph: '+63 9XX XXX XXXX', auto: 'tel' })}
       ${errLine()}
       <button class="btn" data-action="create-account">Create</button>

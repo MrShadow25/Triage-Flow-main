@@ -25,7 +25,7 @@
     const title = S.notif ? 'Notifications' : S.sub === 'detail' ? 'Patient Detail' : S.sub === 'priority' ? 'Set Priority' : TITLES[S.tab];
     const body = S.notif ? ui.notifications(r) : ui[r.toLowerCase()](S.tab, S.sub);
     app.className = r[0];
-    app.innerHTML = appHeader({ title, back, dot: TF.hasHot(r) }) + `<main>${body}</main>` + ui.nav(r, S.tab, S.notif);
+    app.innerHTML = appHeader({ title, back, dot: TF.unread(r) > 0 }) + `<div class="who">Welcome, <b>${esc(S.user.name)}</b> <span>${esc(S.user.id)} · ${esc(S.user.role)}</span></div><main>${body}</main>` + ui.nav(r, S.tab, S.notif);
   }
 
   function renderModal() {
@@ -83,7 +83,7 @@
     } else if (tf.purpose === 'verify') {
       const a = S.ca, sid = a.id.trim().toUpperCase(), prof = S.staff.find((x) => x.sid === sid);
       S.accounts.push({ id: sid, name: prof ? prof.name : a.name.trim(), role: a.role, pw: a.pw, phone: a.phone, tsec: tf.secret });
-      if (!prof && a.role !== 'Receptionist') S.staff.push({ sid, name: a.name.trim(), role: a.role, spec: a.role === 'Doctor' ? 'Physician' : 'Registered Nurse', st: 'available' });
+      if (!prof && a.role !== 'Receptionist') S.staff.push({ sid, name: a.name.trim(), role: a.role, spec: (a.spec || '').trim().slice(0, 100) || (a.role === 'Doctor' ? 'Physician' : 'Registered Nurse'), st: 'available' });
       TF.engine.autoAssign();
       S.lf = { id: a.id.trim().toUpperCase(), pw: '' }; S.role = a.role; S.ca = TF.blank.account(); S.scr = 'login';
       toast('Authenticator linked. Account created. Sign in to continue.');
@@ -108,9 +108,13 @@
       const id = S.lf.id.trim().toUpperCase();
       if (!id || !S.lf.pw) return fail('Enter your Staff ID and password.');
       const acc = S.accounts.find((a) => a.id === id);
+      if (acc && acc.lockedUntil > Date.now()) return fail('Too many failed attempts. Try again in a few minutes.');
       if (acc && acc.pw === null && acc.role === S.role) return fail('This account was imported. Tap "Forgot password?" to set a new password.');
-      if (!acc || acc.pw !== S.lf.pw || acc.role !== S.role) return fail('Staff ID, password or role is incorrect.');
-      S.err = '';
+      if (!acc || acc.pw !== S.lf.pw || acc.role !== S.role) {
+        if (acc) { acc.fails = (acc.fails || 0) + 1; if (acc.fails >= 5) { acc.lockedUntil = Date.now() + 5 * 60000; acc.fails = 0; } TF.store.save(); }
+        return fail('Staff ID, password or role is incorrect.');
+      }
+      acc.fails = 0; acc.lockedUntil = 0; S.err = '';
       start2FA('login', { id: acc.id }, acc.phone);
     },
 
@@ -163,15 +167,16 @@
 
     /* --- session / navigation --- */
     logout() { S.user = null; S.scr = 'login'; S.err = ''; render(); },
-    bell() { S.notif = true; render(); },
+    bell() { S.notif = true; S.seen = S.seen || {}; S.seen[S.user.id] = Date.now(); render(); },
     tab(d) { S.tab = d.v; S.sub = ''; S.notif = false; S.err = ''; render(); },
     back() { if (S.notif) S.notif = false; else if (S.sub) S.sub = ''; else S.tab = TABS[S.role][0][0]; render(); },
 
     /* --- receptionist --- */
     'reg-next'() {
-      const f = S.f, age = f.a === '' ? null : Number(f.a);
-      if (!f.n.trim() || !f.c.trim()) return fail('Enter a patient name and complaint.');
-      if (age !== null && (!Number.isFinite(age) || age < 0 || age > 120)) return fail('Enter an age between 0 and 120.');
+      const f = S.f, age = Number(f.a);
+      if (f.n.trim().length < 2) return fail('Enter the patient’s full name.');
+      if (f.a === '' || !Number.isInteger(age) || age < 0 || age > 120) return fail('Enter a valid age (0–120).');
+      if (f.c.trim().length < 2) return fail('Enter the patient’s complaint.');
       S.err = ''; S.sub = 'priority'; render();
     },
     chk(d) { const i = +d.i; S.chk = S.chk.includes(i) ? S.chk.filter((x) => x !== i) : [...S.chk, i]; render(); },
@@ -191,7 +196,9 @@
     },
     'delete-patient'(d) {
       const p = TF.patients.byId(d.id);
-      if (!p || !confirm(`Permanently delete ${p.n}'s queue registration?`)) return;
+      if (!p) return;
+      if (!['waiting', 'in_care'].includes(p.st)) return toast('Only waiting or in-care patients can be deleted.');
+      if (!confirm(`Permanently delete ${p.n}'s queue registration?`)) return;
       TF.engine.remove(p); render(); toast('Patient registration deleted.');
     },
     'reassign-patient'(d) { const p = TF.patients.byId(d.id); S.sel = +d.id; S.rd = p.doc; S.rn = p.nu; A.tab({ v: 'reassign' }); },
@@ -230,13 +237,13 @@
     'task-done'(d) { TF.engine.completeTask(+d.id); render(); toast('Task marked done — next re-check scheduled'); },
 
     /* --- doctor --- */
-    'open-patient'(d) { S.sel = +d.id; S.dxv = TF.patients.byId(S.sel).dx; S.sub = 'detail'; S.notif = false; render(); },
+    'open-patient'(d) { S.sel = +d.id; S.dxv = TF.patients.byId(S.sel).dx === 'Pending' ? '' : TF.patients.byId(S.sel).dx; S.sub = 'detail'; S.notif = false; render(); },
     'save-dx'() { const p = TF.patients.byId(S.sel); if (!p) return; TF.engine.saveDx(p, S.dxv); render(); toast('Diagnosis saved'); },
     'patient-status'(d) {
       const p = TF.patients.byId(S.sel); if (!p) return;
       TF.engine.status(p, d.v);
       if (d.v === 'out') { S.sub = ''; toast(p.n + ' discharged — room and staff freed'); }
-      else toast(d.v === 'admitted' ? p.n + ' admitted' : 'Marked as seen');
+      else toast(d.v === 'admitted' ? 'Patient admitted' : 'Marked as seen');
       render();
     },
   };
@@ -322,6 +329,7 @@
 
   /* =====================  START  ===================== */
   TF.store.load();
+  if (Object.values(S.NT).every((l) => !l.length)) S.NT = TF.seedNT();   // nothing yet: show the sample notifications
   if (TF.importAccounts()) TF.store.save();
   render();
 })();

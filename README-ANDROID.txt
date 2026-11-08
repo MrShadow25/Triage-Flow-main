@@ -43,3 +43,7 @@ Codes come from an authenticator app (Google Authenticator / Microsoft Authentic
 First sign-in (or sign-up): tap "Add to authenticator app" or type the setup key, then enter the 6-digit code. Later sign-ins just ask for the code.
 "Lost your phone?" re-links a new phone after entering the hospital code (12345678).
 For testing without a phone, set TWO_FACTOR: 'demo' in www/src/state.js to show the code on screen.
+
+## Matches the hospital prototype
+Sign-in lockout (5 wrong tries = 5 min), specialty on sign-up, age required (0-120), delete only waiting/in-care patients,
+queue shows specialty + "Not yet diagnosed", removed/reassigned/room-available notifications, summary for the current 8-hour shift.

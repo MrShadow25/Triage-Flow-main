@@ -18,7 +18,7 @@
       ${input('Full name', 'f1', 'f.n', { ph: 'Enter patient name', extra: 'autocomplete="off"' })}
       ${input('Age', 'f2', 'f.a', { ph: 'Enter age', type: 'number', extra: 'min="0" max="120" inputmode="numeric"' })}
       ${input('Complaint', 'f3', 'f.c', { ph: 'Enter complaint' })}
-      ${input('Diagnosis (illness), optional', 'f4', 'f.dx', { ph: 'e.g. Angina' })}
+      ${input('Diagnosis (optional)', 'f4', 'f.dx', { ph: 'e.g. Angina' })}
       ${S.err ? `<p class="form-err" role="alert">${esc(S.err)}</p>` : ''}
       <button class="btn" data-action="reg-next">Next: Set Priority</button></div>`;
   }
@@ -43,8 +43,8 @@
     return list.map((p) => { const w = TF.patients.wait(p); return `<div class="card">
       <div class="row"><span>${pill(p)} <b style="margin-left:6px">${esc(p.n)}</b></span>
         <span><button class="chip" data-action="reassign-patient" data-id="${p.id}">Reassign</button>
-        <button class="chip" style="color:#dc2626" data-action="delete-patient" data-id="${p.id}">Delete</button></span></div>
-      <div class="row" style="margin-top:10px"><span class="mu">Doctor: ${esc(p.doc || 'Unassigned')}<br>Nurse: ${esc(p.nu || 'Unassigned')}<br>Complaint: ${esc(p.c)}<br>Diagnosis: ${esc(p.dx)}</span>
+        ${['waiting', 'in_care'].includes(p.st) ? `<button class="chip" style="color:#dc2626" data-action="delete-patient" data-id="${p.id}">Delete</button>` : ''}</span></div>
+      <div class="row" style="margin-top:10px"><span class="mu">Assigned Doctor: ${esc(p.doc || 'Unassigned')}<br>Medical Specialty: ${esc(p.doc ? TF.staff.spec(p.doc) : 'Not assigned')}<br>Assigned Nurse: ${esc(p.nu || 'Unassigned')}<br>Patient Complaint: ${esc(p.c)}<br>Diagnosis: “${esc(TF.patients.dx(p))}”</span>
         <span><span class="chip">${roomLabel(p.room)}</span> <span class="chip ${wc(w)}" data-t="${p.id}">${fmt(w)}</span></span></div></div>`; }).join('')
       || '<p class="mu">The queue is empty. Register a patient to begin.</p>';
   }
@@ -57,6 +57,8 @@
 
   function rooms() {
     const act = TF.patients.active();
+    const free = [1, 2, 3, 4, 5, 6].filter((n) => !act.some((p) => p.room == n));
+    if (!free.includes(S.room)) S.room = free[0] || null;   // like the prototype: first free room is preselected
     return `<div class="grid">${[1, 2, 3, 4, 5, 6].map((n) => {
       const o = act.find((p) => p.room == n);
       return `<button class="rm ${o ? '' : 'free'} ${S.room == n ? 'on' : ''}" data-action="room" data-v="${n}" ${o ? 'disabled' : ''} aria-pressed="${S.room == n}">

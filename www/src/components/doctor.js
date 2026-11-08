@@ -11,7 +11,7 @@
     if (sub === 'detail') {
       const p = TF.patients.byId(S.sel);
       if (!p) return '';
-      const rows = [['Age', p.age == null ? '—' : p.age], ['Complaint', p.c], ['Diagnosis', p.dx], ['Wait time', fmt(TF.patients.wait(p))], ['Room', roomLabel(p.room)], ['Doctor', p.doc || 'Unassigned'], ['Nurse', p.nu || 'Unassigned'], ['Status', SL[p.st] || p.st]]
+      const rows = [['Age', p.age == null ? '—' : p.age], ['Complaint', p.c], ['Diagnosis', TF.patients.dx(p)], ['Wait time', fmt(TF.patients.wait(p))], ['Room', roomLabel(p.room)], ['Attending Physician', p.doc || 'Unassigned'], ['Assigned Nurse', p.nu || 'Unassigned'], ['Status', SL[p.st] || p.st]]
         .map((x) => `<div class="kv"><span class="mu">${x[0]}</span><b>${esc(x[1])}</b></div>`).join('');
       return `<div class="card">${pill(p)} <b style="margin-left:6px;font-size:17px">${esc(p.n)}</b>${rows}</div>
         <div class="card"><label for="dx">Diagnosis</label><input id="dx" data-model="dxv" value="${esc(S.dxv)}" placeholder="Enter diagnosis">

@@ -90,3 +90,7 @@ details.demo summary{cursor:pointer}
 .toast{position:absolute;left:50%;bottom:90px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:99px;font-size:13px;z-index:30;max-width:90%;text-align:center}
 
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* signed-in user banner (like the hospital prototype) */
+.who{padding:10px 16px;font-size:16px;background:color-mix(in srgb,var(--c,#2563eb) 14%,var(--card,#fff));border-bottom:1px solid var(--ln,#e5e7eb);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who b{font-size:18px}.who span{margin-left:8px;font-size:12px;opacity:.7}
