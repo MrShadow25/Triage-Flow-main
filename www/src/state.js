@@ -6,7 +6,7 @@
 
   TF.config = {
     DEMO_MODE: true, MAX_ATTEMPTS: 3, RESEND_SECONDS: 30, CODE_TTL_MS: 5 * 60 * 1000, MIN_PASSWORD: 8,
-    TWO_FACTOR: 'demo',   // 'demo' = code shown on screen (nothing to install) | 'authenticator' = real TOTP app codes
+    TWO_FACTOR: 'authenticator',   // real TOTP codes from Google/Microsoft Authenticator. ('demo' = code shown on screen, for testing only)
     STORE_KEY: 'triageflow-v3',
     RECHECK_MIN: { 1: 15, 2: 30, 3: 60, 4: 120, 5: 240 }, // nurse re-check interval per priority
     MAX_LOAD: { Doctor: 3, Nurse: 2 },                    // max active patients per doctor / nurse (from hospital config.php)

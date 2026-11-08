@@ -38,7 +38,8 @@ Hospital code for sign-up: 12345678. Staff directory, patients and tasks use the
 To bring over accounts made in the old PHP version: fill www/src/accounts-import.js (instructions inside).
 Imported people set a new password once through "Forgot password?" (the old PHP hashes cannot be read here).
 
-## Two-factor sign-in
-Default (prototype): a 6-digit code is shown on screen; nothing to install and no SMS is sent.
-To use real free 2FA instead, set TWO_FACTOR: 'authenticator' in www/src/state.js. People then link Google/Microsoft
-Authenticator once (button + setup key) and type the app's 6-digit code. No SMS, no Firebase, no cost, works offline.
+## Two-factor sign-in (real, free)
+Codes come from an authenticator app (Google Authenticator / Microsoft Authenticator). No SMS, no Firebase, no cost, works offline.
+First sign-in (or sign-up): tap "Add to authenticator app" or type the setup key, then enter the 6-digit code. Later sign-ins just ask for the code.
+"Lost your phone?" re-links a new phone after entering the hospital code (12345678).
+For testing without a phone, set TWO_FACTOR: 'demo' in www/src/state.js to show the code on screen.
