@@ -6,7 +6,8 @@
   "scripts": {
     "android:add": "npx cap add android",
     "android:sync": "npx cap sync android",
-    "android:open": "npx cap open android"
+    "android:open": "npx cap open android",
+    "demo:accounts": "node --env-file=.env backend/seed-demo-accounts.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",

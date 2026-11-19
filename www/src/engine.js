@@ -1,14 +1,17 @@
-/* engine.js — the hospital prototype's PHP/MySQL logic, rewritten as plain browser JS (data lives in state.js / localStorage). */
+/* engine.js — hospital actions. Reads come from the in-memory copy (sync.js); every change is written to Supabase.
+   Assignment, discharge and task rules that must not race between phones run inside the database. */
 (function () {
   'use strict';
   const TF = window.TF, S = TF.state, C = TF.config, MIN = 60000;
+  const db = () => TF.backend.sb;
+  const ok = (r) => { if (r.error) throw r.error; return r; };
 
   /* ---------- patients ---------- */
   const P = (TF.patients = {
     byId: (id) => S.P.find((p) => p.id == id),
     active: () => S.P.filter((p) => p.st !== 'out'),
     wait: (p) => Math.max(0, Math.floor(((p.tSeen || Date.now()) - p.t0) / 1000)), // seconds; stops once seen
-    // Doctors and nurses only see their own patients; receptionists see everyone.
+    // Doctors and nurses only see their own patients (the database enforces it too); receptionists see everyone.
     mine() {
       const m = ST.me(), n = m && m.name, a = P.active();
       return S.role === 'Doctor' ? a.filter((p) => p.doc === n) : S.role === 'Nurse' ? a.filter((p) => p.nu === n) : a;
@@ -22,91 +25,64 @@
     nurses: () => ST.list('Nurse'),
     load: (s) => P.active().filter((p) => (s.role === 'Doctor' ? p.doc : p.nu) === s.name).length,
     me: () => S.user && S.staff.find((s) => s.sid === S.user.id),
-    pick: (role) => ST.list(role).filter((s) => s.st === 'available' && ST.load(s) < C.MAX_LOAD[role])
-      .sort((a, b) => ST.load(a) - ST.load(b))[0], // fewest patients first
+    sid: (name) => (S.staff.find((s) => s.name === name) || {}).sid || null,
   });
 
-  /* ---------- notifications ---------- */
   const dxOf = (p) => (p.dx && p.dx !== 'Pending' ? p.dx : 'Not yet diagnosed');
   TF.patients.dx = dxOf;
   TF.staff.spec = (name) => { const s = S.staff.find((x) => x.name === name); return s ? s.spec : 'Not assigned'; };
-  TF.notify = (role, title, detail, hot, to) => {
-    const l = S.NT[role]; l.unshift([title, Date.now(), detail, !!hot, to || null]); if (l.length > 30) l.length = 30;
-  };
-  TF.notifs = (role) => S.NT[role].filter((n) => !n[4] || (S.user && n[4] === S.user.name));
+
+  /* ---------- notifications ---------- */
+  const rl = (r) => 'Room ' + String(r).padStart(2, '0');
+  const eventKey = () => crypto.randomUUID();
+  const notify = (role, toName, title, detail, hot) =>
+    db().from('notifications').insert({ role, to_sid: toName ? ST.sid(toName) : null, title, detail, hot: !!hot, event_key: eventKey() }).then(ok);
+  const releaseRoom = (r) => (r ? notify('Receptionist', null, 'Room Availability', rl(r) + ' is available') : null);
+  TF.notifs = (role) => (S.NT[role] || []).filter((n) => !n[4] || (S.user && n[4] === S.user.name));
   // Unread = newer than the last time this person opened the bell. Drives the red dot.
   TF.unread = (role) => TF.notifs(role).filter((n) => n[1] > ((S.seen || {})[S.user.id] || 0)).length;
 
-  /* ---------- tasks & auto-assignment ---------- */
-  const addRecheck = (p) => { if (p.nu) S.tasks.push({ id: S.tid++, pid: p.id, nurse: p.nu, title: 'Re-check', due: Date.now() + C.RECHECK_MIN[p.p] * MIN }); };
-  const freeRoom = () => [1, 2, 3, 4, 5, 6].find((r) => !P.active().some((p) => p.room === r));
-  const releaseRoom = (r) => { if (r) TF.notify('Receptionist', 'Room Availability', rl(r) + ' is available'); };
-  const rl = (r) => 'Room ' + String(r).padStart(2, '0');
+  const autoAssign = () => db().rpc('auto_assign').then(ok);
+  const addRecheck = (p, nurseSid) => db().from('tasks').insert({ patient_id: p.id, nurse_sid: nurseSid, due: new Date(Date.now() + C.RECHECK_MIN[p.p] * MIN).toISOString() }).then(ok);
 
-  // Fills a missing doctor / nurse / room for waiting patients, most urgent first. P1–P3 get rooms automatically.
-  function autoAssign() {
-    S.P.filter((p) => ['waiting', 'in_care'].includes(p.st) && (!p.doc || !p.nu || !p.room))
-      .sort((a, b) => a.p - b.p || a.t0 - b.t0).forEach((p) => {
-        const hot = p.p === 1;
-        if (!p.doc) { const d = ST.pick('Doctor'); if (d) { p.doc = d.name; TF.notify('Doctor', 'New Patient Assigned', `Patient ${p.n} — Complaint: ${p.c}`, hot, d.name); } }
-        if (!p.nu) { const n = ST.pick('Nurse'); if (n) { p.nu = n.name; addRecheck(p); TF.notify('Nurse', 'New Patient Assigned', `Patient ${p.n} — Complaint: ${p.c}`, hot, n.name); } }
-        if (!p.room && p.p <= 3) { const r = freeRoom(); if (r) { p.room = r; TF.notify('Receptionist', 'Patient Queue Update', `Patient ${p.n} was moved to ${rl(r)}`); } }
-      });
-  }
-
-  /* ---------- actions ---------- */
+  /* ---------- actions (all async; they throw on failure) ---------- */
   TF.engine = {
     autoAssign,
-    register(f, pri, syms) {
-      const p = { id: S.nid++, n: f.n.trim(), age: +f.a, p: pri, c: f.c.trim(), dx: f.dx.trim(), sym: syms, room: null, doc: null, nu: null, t0: Date.now(), st: 'waiting' };
-      S.P.push(p);
-      TF.notify('Receptionist', 'Patient Priority Set', `Patient ${p.n} was added to the queue with Priority P${pri}`, pri === 1);
-      autoAssign();
-      return p;
+    async register(f, pri, syms) {
+      const r = ok(await db().from('patients').insert({ name: f.n.trim(), age: +f.a, priority: pri, complaint: f.c.trim(), symptoms: syms }).select().single());
+      await notify('Receptionist', null, 'Patient Priority Set', `Patient ${r.data.name} was added to the queue with Priority P${pri}`, pri === 1);
+      await autoAssign();
+      await TF.sync.load();
+      return P.byId(r.data.id) || { n: r.data.name, doc: null };
     },
     // Deleting a wrongly entered registration tells everyone involved and frees the room.
-    remove(p) {
-      S.P.splice(S.P.indexOf(p), 1); S.tasks = S.tasks.filter((t) => t.pid !== p.id);
-      TF.notify('Receptionist', 'Patient Removed', `Incorrect registration for ${p.n} was deleted.`);
+    async remove(p) {
+      ok(await db().from('patients').delete().eq('id', p.id));          // the database only allows waiting / in-care patients
+      await notify('Receptionist', null, 'Patient Removed', `Incorrect registration for ${p.n} was deleted.`);
       const msg = `${p.n} was removed from your list (registration entered in error).`;
-      if (p.doc) TF.notify('Doctor', 'Patient Removed', msg, false, p.doc);
-      if (p.nu) TF.notify('Nurse', 'Patient Removed', msg, false, p.nu);
-      releaseRoom(p.room); autoAssign();
+      if (p.doc) await notify('Doctor', p.doc, 'Patient Removed', msg);
+      if (p.nu) await notify('Nurse', p.nu, 'Patient Removed', msg);
+      await releaseRoom(p.room); await autoAssign();
     },
-    reassign(p, doc, nu) {
-      const hot = p.p === 1, job = `Patient ${p.n} — Complaint: ${p.c}`;
-      if (doc && doc !== p.doc) {
-        if (p.doc) TF.notify('Doctor', 'Patient Reassigned', `${p.n} was reassigned to ${doc}.`, false, p.doc);
-        p.doc = doc; TF.notify('Doctor', 'New Patient Assigned', job, hot, doc);
-      }
-      if (nu && nu !== p.nu) {
-        if (p.nu) TF.notify('Nurse', 'Patient Reassigned', `${p.n} was reassigned to ${nu}.`, false, p.nu);
-        p.nu = nu; S.tasks.forEach((t) => { if (t.pid === p.id) t.nurse = nu; });
-        if (!S.tasks.some((t) => t.pid === p.id)) addRecheck(p);
-        TF.notify('Nurse', 'New Patient Assigned', job, hot, nu);
-      }
+    async reassign(p, doc, nu) {
+      const docSid = ST.sid(doc), nurseSid = ST.sid(nu);
+      if (!docSid || !nurseSid) throw new Error('Choose an active Doctor and Nurse.');
+      ok(await db().rpc('reassign_patient', { p_id: p.id, p_doc_sid: docSid, p_nu_sid: nurseSid, p_event_key: eventKey() }));
+      await TF.sync.load();
     },
-    setRoom(p, r) {
-      const old = p.room; p.room = r;
-      if (r) TF.notify('Receptionist', 'Patient Queue Update', `Patient ${p.n} was moved to ${rl(r)}`);
-      if (old && old !== r) releaseRoom(old);
+    async setRoom(p, r) {
+      const old = p.room, u = await db().from('patients').update({ room: r }).eq('id', p.id);
+      if (u.error) throw u.error.code === '23505' ? new Error('That room is occupied.') : u.error;
+      if (r) await notify('Receptionist', null, 'Patient Queue Update', `Patient ${p.n} was moved to ${rl(r)}`);
+      if (old && old !== r) await releaseRoom(old);
     },
-    saveDx(p, dx) { p.dx = dx.trim().slice(0, 255); },
-    status(p, st) {
-      const now = Date.now();
-      if (st === 'seen') { p.tSeen = p.tSeen || now; if (p.st === 'waiting') p.st = 'in_care'; }
-      else if (st === 'admitted') { p.tSeen = p.tSeen || now; p.tAdm = p.tAdm || now; p.st = 'admitted'; }
-      else if (st === 'out') {
-        p.tSeen = p.tSeen || now; p.tClosed = now; p.st = 'out';
-        const r = p.room; p.room = null; S.tasks = S.tasks.filter((t) => t.pid !== p.id); releaseRoom(r); autoAssign();
-      }
+    async saveDx(p, dx) { ok(await db().rpc('set_patient_diagnosis', { p_id: p.id, p_dx: dx.trim().slice(0, 255), p_event_key: eventKey() })); },
+    async status(p, st) { ok(await db().rpc('set_patient_status', { p_id: p.id, p_st: st, p_event_key: eventKey() })); },
+    async setStaffStatus(s, st) {
+      ok(await db().from('profiles').update({ status: st }).eq('staff_id', s.sid));
+      if (st === 'available') await autoAssign();
     },
-    setStaffStatus(s, st) { s.st = st; if (st === 'available') autoAssign(); },
-    completeTask(id) {
-      const t = S.tasks.find((x) => x.id === id); if (!t) return;
-      S.tasks = S.tasks.filter((x) => x.id !== id);
-      const p = P.byId(t.pid); if (p && p.st !== 'out') addRecheck(p); // schedule the next re-check
-    },
+    async completeTask(id) { ok(await db().rpc('complete_task', { p_id: id, p_event_key: eventKey() })); },
     // Current 8-hour shift (6-14, 14-22, 22-6), the same window the hospital prototype reports on.
     summary() {
       const n = new Date(), h = n.getHours(), at = (d, hh) => { const x = new Date(n); x.setDate(x.getDate() + d); x.setHours(hh, 0, 0, 0); return +x; };

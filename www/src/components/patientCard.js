@@ -9,10 +9,11 @@
 
   TF.components.patientCard = (p, clickable) => {
     const w = TF.patients.wait(p);
+    const status = ({ waiting: 'Waiting', in_care: 'Being seen', admitted: 'Admitted', out: 'Discharged' })[p.st] || p.st;
     const inner = `
       <span class="row"><span>${TF.components.pill(p)} <b style="margin-left:6px;font-size:16px">${esc(p.n)}</b></span></span>
       <span class="row" style="margin-top:10px">
-        <span class="mu">${esc(p.c)}<br>Diagnosis: ${esc(TF.patients.dx(p))}</span>
+        <span class="mu">${esc(p.c)}<br>Diagnosis: ${esc(TF.patients.dx(p))}<br>Status: ${esc(status)}</span>
         <span><span class="chip">${roomLabel(p.room)}</span> <span class="chip ${wc(w)}" data-t="${p.id}">${fmt(w)}</span></span>
       </span>`;
     return clickable

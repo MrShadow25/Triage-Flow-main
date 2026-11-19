@@ -12,13 +12,13 @@
   const stLabel = (st) => (st === 'available' ? 'Available' : st === 'busy' ? 'Busy' : 'Off-duty');
   const stCls = (st) => (st === 'available' ? 'g' : st === 'busy' ? 'r' : '');
   const plural = (n) => `${n} patient${n === 1 ? '' : 's'}`;
+  const statusLabel = (st) => ({ waiting: 'Waiting', in_care: 'Being seen', admitted: 'Admitted', out: 'Discharged' }[st] || st);
 
   function register() {
     return `<div class="card">
       ${input('Full name', 'f1', 'f.n', { ph: 'Enter patient name', extra: 'autocomplete="off"' })}
       ${input('Age', 'f2', 'f.a', { ph: 'Enter age', type: 'number', extra: 'min="0" max="120" inputmode="numeric"' })}
       ${input('Complaint', 'f3', 'f.c', { ph: 'Enter complaint' })}
-      ${input('Diagnosis (optional)', 'f4', 'f.dx', { ph: 'e.g. Angina' })}
       ${S.err ? `<p class="form-err" role="alert">${esc(S.err)}</p>` : ''}
       <button class="btn" data-action="reg-next">Next: Set Priority</button></div>`;
   }
@@ -45,16 +45,29 @@
         <span><button class="chip" data-action="reassign-patient" data-id="${p.id}">Reassign</button>
         ${['waiting', 'in_care'].includes(p.st) ? `<button class="chip" style="color:#dc2626" data-action="delete-patient" data-id="${p.id}">Delete</button>` : ''}</span></div>
       <div class="row" style="margin-top:10px"><span class="mu">Assigned Doctor: ${esc(p.doc || 'Unassigned')}<br>Medical Specialty: ${esc(p.doc ? TF.staff.spec(p.doc) : 'Not assigned')}<br>Assigned Nurse: ${esc(p.nu || 'Unassigned')}<br>Patient Complaint: ${esc(p.c)}<br>Diagnosis: “${esc(TF.patients.dx(p))}”</span>
-        <span><span class="chip">${roomLabel(p.room)}</span> <span class="chip ${wc(w)}" data-t="${p.id}">${fmt(w)}</span></span></div></div>`; }).join('')
+        <span><span class="chip">${statusLabel(p.st)}</span> <span class="chip">${roomLabel(p.room)}</span> <span class="chip ${wc(w)}" data-t="${p.id}">${fmt(w)}</span></span></div></div>`; }).join('')
       || '<p class="mu">The queue is empty. Register a patient to begin.</p>';
   }
 
   function staff() {
-    const group = (h, l) => `<b>${h}</b><div class="sec">${l.map((s) => `<div class="card row" style="margin:0 0 8px">
-      <span>${dot(s.st)} <b>${esc(s.name)}</b><div class="mu">${esc(s.spec)} · ${plural(TF.staff.load(s))}</div></span><span class="chip ${stCls(s.st)}">${stLabel(s.st)}</span></div>`).join('')}</div>`;
-    return `<p class="mu">View only · Staff set their own status and new patients are assigned automatically.</p>${group('Doctors', TF.staff.docs())}${group('Nurses', TF.staff.nurses())}`;
-  }
+    const formatName = (s, role) => {
+      const name = s.name
+        .replace(/^(Dr\.?|Mr\.?|Ms\.?|Mrs\.?|RN)\s*/i, '')
+        .replace(/,\s*(MD|RN)$/i, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\b\w/g, c => c.toUpperCase());
 
+      if (role === 'Doctor') return `Dr. ${name}, MD`;
+      if (role === 'Nurse') return `${name}, RN`;
+      return name;
+    };
+
+    const group = (h, l, role) => `<b>${h}</b><div class="sec">${l.map((s) => `<div class="card row" style="margin:0 0 8px">
+      <span>${dot(s.st)} <b>${esc(formatName(s, role))}</b><div class="mu">${esc(s.spec)} · ${plural(TF.staff.load(s))}</div></span><span class="chip ${stCls(s.st)}">${stLabel(s.st)}</span></div>`).join('')}</div>`;
+
+    return `<p class="mu">View only · Staff set their own status and new patients are assigned automatically.</p>${group('Doctors', TF.staff.docs(), 'Doctor')}${group('Nurses', TF.staff.nurses(), 'Nurse')}`;
+  }
   function rooms() {
     const act = TF.patients.active();
     const free = [1, 2, 3, 4, 5, 6].filter((n) => !act.some((p) => p.room == n));
@@ -89,8 +102,7 @@
     const s = TF.engine.summary();
     return `<div class="grid">${[[s.total, 'Patients'], [s.avg + 'm', 'Avg wait'], [s.admitted, 'Admitted'], [s.out, 'Discharged']].map((x) => `<div class="card" style="margin:0"><div class="big">${x[0]}</div><div class="mu" style="text-align:center">${x[1]}</div></div>`).join('')}</div>
       <div class="card" style="margin-top:10px;text-align:center">Shift: ${s.shift}</div>
-      <button class="btn" data-action="export">Export Summary (CSV)</button>
-      <button class="btn dk" data-action="reset-demo">Reset demo data</button>`;
+      <button class="btn" data-action="export">Export Summary (CSV)</button>`;
   }
 
   TF.components.receptionist = (tab, sub) => {
