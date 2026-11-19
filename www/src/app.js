@@ -290,25 +290,35 @@
         new Date().toISOString().slice(0, 10) + '.csv';
 
       if (window.Capacitor?.isNativePlatform()) {
-        const file = new File([csv], filename, {
-          type: 'text/csv;charset=utf-8'
-        });
-
         try {
-          if (!navigator.canShare || !navigator.share ||
-              !navigator.canShare({ files: [file] })) {
-            throw new Error('File sharing is unavailable');
+          const plugins = window.TFNativePlugins;
+
+          if (!plugins?.Filesystem || !plugins?.Share) {
+            throw new Error('Capacitor plugins unavailable');
           }
 
-          await navigator.share({
-            files: [file],
-            title: 'TriageFlow Shift Summary'
+          const saved = await plugins.Filesystem.writeFile({
+            path: filename,
+            data: csv,
+            directory: plugins.Directory.Cache,
+            encoding: 'utf8'
           });
+
+          await plugins.Share.share({
+            title: 'TriageFlow Shift Summary',
+            text: 'TriageFlow Shift Summary',
+            files: [saved.uri],
+            dialogTitle: 'Share Shift Summary'
+          });
+
+          toast('Summary ready to share');
         } catch (error) {
+          console.error('Summary export failed:', error);
           if (error.name !== 'AbortError') {
             toast('Unable to export summary');
           }
         }
+
         return;
       }
 
@@ -329,7 +339,6 @@
 
       toast('Summary exported');
     },
-
     /* --- nurse + doctor shared --- */
     'my-status'(d) { const me = TF.staff.me(); if (!me) return toast('No staff profile for this account'); return act(() => TF.engine.setStaffStatus(me, d.v), 'Status updated'); },
     'task-done'(d) { return act(() => TF.engine.completeTask(+d.id), 'Task marked done — next re-check scheduled'); },
