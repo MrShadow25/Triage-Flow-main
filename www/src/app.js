@@ -272,12 +272,61 @@
       if (!S.rd || !S.rn) return toast('Choose both a doctor and a nurse.');
       return act(async () => { await TF.engine.reassign(p, S.rd, S.rn); S.rd = S.rn = null; S.tab = 'queue'; S.sub = ''; S.notif = false; S.err = ''; }, 'Reassignment confirmed');
     },
-    export() {
+    async export() {
       const s = TF.engine.summary();
-      const rows = [['Shift', s.shift], ['Patients', s.total], ['Average wait (minutes)', s.avg], ['Admitted', s.admitted], ['Discharged', s.out]];
-      const csv = rows.map((r) => r.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+      const rows = [
+        ['Shift', s.shift],
+        ['Patients', s.total],
+        ['Average wait (minutes)', s.avg],
+        ['Admitted', s.admitted],
+        ['Discharged', s.out]
+      ];
+
+      const csv = '\uFEFF' + rows.map((r) =>
+        r.map((v) => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')
+      ).join('\r\n');
+
+      const filename = 'shift-summary-' +
+        new Date().toISOString().slice(0, 10) + '.csv';
+
+      if (window.Capacitor?.isNativePlatform()) {
+        const file = new File([csv], filename, {
+          type: 'text/csv;charset=utf-8'
+        });
+
+        try {
+          if (!navigator.canShare || !navigator.share ||
+              !navigator.canShare({ files: [file] })) {
+            throw new Error('File sharing is unavailable');
+          }
+
+          await navigator.share({
+            files: [file],
+            title: 'TriageFlow Shift Summary'
+          });
+        } catch (error) {
+          if (error.name !== 'AbortError') {
+            toast('Unable to export summary');
+          }
+        }
+        return;
+      }
+
+      const blob = new Blob([csv], {
+        type: 'text/csv;charset=utf-8'
+      });
+
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv); a.download = 'shift-summary-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click();
+
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
       toast('Summary exported');
     },
 
